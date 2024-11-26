@@ -4,10 +4,37 @@ from scipy.fft import fft2, ifft2, fftshift
 from skimage.transform import resize
 import matplotlib.pyplot as plt
 def load_images(short_path, regular_path):
-    short_img = cv2.imread(short_path, cv2.IMREAD_GRAYSCALE).astype(np.float32)
-    regular_img = cv2.imread(regular_path, cv2.IMREAD_GRAYSCALE).astype(np.float32)
+    short_img = cv2.imread(short_path, cv2.IMREAD_GRAYSCALE)
+    regular_img = cv2.imread(regular_path, cv2.IMREAD_GRAYSCALE)
     regular_rgb = cv2.imread(regular_path)
     return short_img, regular_img, regular_rgb
+def detect_keypoints_and_compute_kernel(short_img, regular_img):
+    # Phát hiện điểm đặc trưng sử dụng ORB
+    orb = cv2.ORB_create()
+
+    # Tìm các điểm đặc trưng và mô tả
+    kp1, des1 = orb.detectAndCompute(short_img, None)  # Ảnh bị mờ
+    kp2, des2 = orb.detectAndCompute(regular_img, None)  # Ảnh gốc
+
+    # Khớp các điểm đặc trưng giữa ảnh bị mờ và ảnh gốc
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = bf.match(des1, des2)
+
+    # Sắp xếp các cặp điểm đặc trưng theo khoảng cách
+    matches = sorted(matches, key=lambda x: x.distance)
+
+    # Vẽ các điểm đặc trưng và các đường nối giữa chúng
+    img_matches = cv2.drawMatches(short_img, kp1, regular_img, kp2, matches[:10], None,
+                                  flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+    # Tính toán Homography từ các điểm đặc trưng đã khớp
+    src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+    dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+
+    # Tính toán ma trận Homography (tương quan hình học)
+    M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+
+    return M, img_matches
 
 def estimate_blur_kernel(short_img, regular_img, gamma=0.01):
     S = fft2(short_img)
@@ -83,6 +110,11 @@ def main():
     # Normalize images for display with OpenCV
     result_img_norm = normalize_image(result_img).astype(np.uint8)
     result_rgb_norm = np.dstack([normalize_image(result_rgb[:, :, i]) for i in range(3)]).astype(np.uint8)
+    # Phát hiện các điểm đặc trưng và tính toán Homography
+    homography, img_matches = detect_keypoints_and_compute_kernel(short_img, regular_img)
+
+
+
     print(result_img)
     cv2.imshow("Origin image", regular_img/result_img.max())
     cv2.imshow("RGB Image", regular_rgb)
@@ -92,6 +124,10 @@ def main():
     cv2.imshow("Result Kernel", result_kernel / result_kernel.max())
     cv2.imshow("Deconvolved Image", result_img_norm)
     cv2.imshow("Result RGB", result_rgb_norm)
+    # Hiển thị kết quả khớp các điểm đặc trưng
+    plt.imshow(img_matches)
+    plt.title('Feature Matches between Blurred and Original Images')
+    plt.show()
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
