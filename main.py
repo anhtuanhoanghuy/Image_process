@@ -62,8 +62,14 @@ def dilation(img, iterations=1):
     return dilation_img
 
 def AND_image(blur_kernel, unblur_kernel):
+    # Điều chỉnh kích thước của mảng nhỏ hơn để khớp với mảng lớn hơn
+    min_shape = np.minimum(blur_kernel.shape, unblur_kernel.shape)
+    # Cắt kích thước của cả hai mảng về kích thước nhỏ hơn
+    blur_kernel = blur_kernel[:min_shape[0], :min_shape[1]]
+    unblur_kernel = unblur_kernel[:min_shape[0], :min_shape[1]]
     mask1 = blur_kernel > 0
     mask2 = unblur_kernel > 0
+
     and_mask = np.logical_and(mask1, mask2)
     and_result = np.where(and_mask, blur_kernel, 0)
     kernel_sum = np.sum(and_result)
@@ -104,26 +110,17 @@ def main():
     and_kernel = AND_image(kernel, resize_kernel)
     result_kernel = erosion(and_kernel)
     result_kernel = dilation(result_kernel)
-    result_img = wiener_deconvolution2(regular_img, result_kernel)
-    result_rgb = process_rgb_channels(regular_rgb, result_kernel)
-
+    result_img = wiener_deconvolution2(regular_img, kernel)
+    result_rgb = process_rgb_channels(regular_rgb, kernel)
     # Normalize images for display with OpenCV
     result_img_norm = normalize_image(result_img).astype(np.uint8)
     result_rgb_norm = np.dstack([normalize_image(result_rgb[:, :, i]) for i in range(3)]).astype(np.uint8)
     # Phát hiện các điểm đặc trưng và tính toán Homography
     homography, img_matches = detect_keypoints_and_compute_kernel(short_img, regular_img)
-
-
-
-    print(result_img)
-    cv2.imshow("Origin image", regular_img/result_img.max())
-    cv2.imshow("RGB Image", regular_rgb)
+    cv2.imshow("Origin Long_exposure Image", regular_rgb)
     cv2.imshow("Origin Blur Kernel", kernel / kernel.max())
-    cv2.imshow("Estimated Blur Kernel", half_size_kernel / half_size_kernel.max())
-    cv2.imshow("Resize", resize_kernel / resize_kernel.max())
     cv2.imshow("Result Kernel", result_kernel / result_kernel.max())
-    cv2.imshow("Deconvolved Image", result_img_norm)
-    cv2.imshow("Result RGB", result_rgb_norm)
+    cv2.imshow("Result Image", result_rgb_norm)
     # Hiển thị kết quả khớp các điểm đặc trưng
     plt.imshow(img_matches)
     plt.title('Feature Matches between Blurred and Original Images')
